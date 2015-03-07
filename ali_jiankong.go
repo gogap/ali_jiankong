@@ -1,9 +1,10 @@
 package ali_jiankong
 
 import (
-	"encoding/json"
+	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gogap/errors"
@@ -20,11 +21,30 @@ const (
 type Dimensions map[string]string
 
 type ReportItem struct {
-	MetricName  string     `json:"metricName"`
-	MetricValue string     `json:"value"`
-	Dimensions  Dimensions `json:"dimensions"`
-	Unit        string     `json:"unit"`
-	Timestamp   string     `json:"timestamp"`
+	MetricName      string     `json:"metricName"`
+	MetricValue     string     `json:"value"`
+	Dimensions      Dimensions `json:"dimensions"`
+	DimensionsOrder []string   `json:"-"`
+	Unit            string     `json:"unit"`
+	Timestamp       string     `json:"timestamp"`
+}
+
+func (p *ReportItem) Serialize() string {
+	arrayDimensions := []string{}
+	for _, dim := range p.DimensionsOrder {
+		if v, exist := p.Dimensions[dim]; exist {
+			arrayDimensions = append(arrayDimensions, fmt.Sprintf("\"%s\":\"%s\"", dim, v))
+		} else {
+			arrayDimensions = append(arrayDimensions, fmt.Sprintf("\"%s\":\"%s\"", dim, ""))
+		}
+	}
+
+	return fmt.Sprintf("{\"metricName\":\"%s\",\"value\":\"%s\",\"dimensions\":{%s},\"unit\":\"%s\",\"timestamp\":\"%s\"}",
+		p.MetricName,
+		p.MetricValue,
+		strings.Join(arrayDimensions, ","),
+		p.Unit,
+		p.Timestamp)
 }
 
 type AliJianKong struct {
@@ -52,20 +72,14 @@ func (p *AliJianKong) Report(items ...ReportItem) (err error) {
 	timestamp := time.Now().Unix()
 	strTimestamp := strconv.Itoa(int(timestamp))
 
-	metrics := []ReportItem{}
+	metrics := []string{}
 	for _, item := range items {
 		item.Unit = "None"
 		item.Timestamp = strTimestamp
-		metrics = append(metrics, item)
+		metrics = append(metrics, item.Serialize())
 	}
 
-	strMetrics := ""
-	if data, e := json.Marshal(metrics); e != nil {
-		err = ERR_MARSHAL_METRICS_FAILED.New(errors.Params{"err": e})
-		return
-	} else {
-		strMetrics = string(data)
-	}
+	strMetrics := "[" + strings.Join(metrics, ",") + "]"
 
 	v := url.Values{}
 	v.Add("userId", p.uid)
